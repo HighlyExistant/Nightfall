@@ -1,4 +1,5 @@
-use std::{alloc::Layout, cell::Cell, ops::Add, pin::Pin, rc::Rc, sync::Arc};
+#![allow(unused)]
+use std::{alloc::Layout, cell::Cell, rc::Rc, sync::Arc};
 /// Represents an abstract arena allocator.
 /// # Concepts
 /// An arena allocator is useful for when you are going to allocate lots of scratch data 
@@ -22,9 +23,14 @@ use std::{alloc::Layout, cell::Cell, ops::Add, pin::Pin, rc::Rc, sync::Arc};
 /// │                512                  │
 /// └─────────────────────────────────────┘
 /// ```
+/// One of the best use cases for an [`Arena`] is to use it as scrath memory.
+/// Whenever you need lots of allocations, it's better to just use an [`Arena`]
+/// as an allocation is really fast.
 pub trait Arena {
     type Allocation;
     fn allocate(&self, layout: Layout) -> Option<Self::Allocation>;
+    fn size(&self) -> usize;
+    fn allocated(&self) -> usize;
     fn clear(&self);
     fn is_clear(&self) -> bool ;
 }
@@ -33,6 +39,12 @@ impl<T: Arena> Arena for Arc<T> {
     type Allocation = T::Allocation;
     fn allocate(&self, layout: Layout) -> Option<Self::Allocation> {
         (**self).allocate(layout)
+    }
+    fn allocated(&self) -> usize {
+        (**self).allocated()
+    }
+    fn size(&self) -> usize {
+        (**self).size()
     }
     fn clear(&self) {
         (**self).clear()
@@ -46,6 +58,12 @@ impl<T: Arena> Arena for Rc<T> {
     fn allocate(&self, layout: Layout) -> Option<Self::Allocation> {
         (**self).allocate(layout)
     }
+    fn allocated(&self) -> usize {
+        (**self).allocated()
+    }
+    fn size(&self) -> usize {
+        (**self).size()
+    }
     fn clear(&self) {
         (**self).clear()
     }
@@ -58,6 +76,12 @@ impl<T: Arena> Arena for Box<T> {
     fn allocate(&self, layout: Layout) -> Option<Self::Allocation> {
         (**self).allocate(layout)
     }
+    fn allocated(&self) -> usize {
+        (**self).allocated()
+    }
+    fn size(&self) -> usize {
+        (**self).size()
+    }
     fn clear(&self) {
         (**self).clear()
     }
@@ -67,17 +91,24 @@ impl<T: Arena> Arena for Box<T> {
 }
 /// Arena allocator that uses a pointer and a size to represent allocations.
 /// Used when performance is preffered
+#[derive(Clone, Debug)]
 pub struct PtrArena {
     ptr: *mut u8,
     size: usize,
     offset: Cell<usize>,
 }
+impl PartialEq for PtrArena {
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr.eq(&other.ptr)
+    }
+}
+impl Eq for PtrArena {}
 
 impl PtrArena {
-    pub fn from_raw(ptr: *mut u8, size: usize) -> Self {
+    pub unsafe fn from_raw(ptr: *mut u8, size: usize) -> Self {
         Self { ptr, size, offset: Cell::new(0) }
     }
-    pub fn from_slice(slice: &mut [u8]) -> Self {
+    pub unsafe fn from_slice(slice: &mut [u8]) -> Self {
         Self { ptr: slice.as_mut_ptr(), size: slice.len(), offset: Cell::new(0) }
     }
     pub fn from_arena(arena: &dyn Arena<Allocation = *mut u8>, layout: Layout) -> Option<Self> {
@@ -101,10 +132,32 @@ impl Arena for PtrArena {
             None
         }
     }
+    fn size(&self) -> usize {
+        self.size
+    }
+    fn allocated(&self) -> usize {
+        self.offset.get()
+    }
     fn clear(&self) {
         self.offset.set(0);
     }
     fn is_clear(&self) -> bool {
         self.offset.get() == 0
+    }
+}
+#[cfg(test)]
+mod test {
+    use std::{alloc::Layout, ops::Sub};
+
+    use super::{Arena, PtrArena};
+    #[test]
+    fn arena_test() {
+        let allocation = unsafe { std::alloc::alloc(Layout::new::<[u8;1024*80]>()) };
+        let arena = unsafe { PtrArena::from_raw(allocation, 1024*80) };
+        let arena_alloc1 = arena.allocate(Layout::new::<u8>()).unwrap(); // size of u8 = 1
+        assert!(arena.allocated() == 1, "Test if the arena correctly allocated a u8");
+        let arena_alloc2 = arena.allocate(Layout::new::<u64>()).unwrap(); // size of u64 = 8 align = 8
+        assert!(arena.allocated() == 16, "Test to see whether it was correctly aligned and allocated");
+        assert!((arena_alloc2 as usize).sub(arena_alloc1 as usize) == 8, "testing to see if the location was correctly allocated");
     }
 }
