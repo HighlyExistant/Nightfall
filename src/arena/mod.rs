@@ -1,5 +1,5 @@
 #![allow(unused)]
-use std::{alloc::Layout, cell::Cell, rc::Rc, sync::Arc};
+use std::{alloc::{Allocator, Layout}, cell::Cell, rc::Rc, sync::Arc};
 /// Represents an abstract arena allocator.
 /// # Concepts
 /// An arena allocator is useful for when you are going to allocate lots of scratch data 
@@ -28,17 +28,20 @@ use std::{alloc::Layout, cell::Cell, rc::Rc, sync::Arc};
 /// as an allocation is really fast.
 pub trait Arena {
     type Allocation;
-    fn allocate(&self, layout: Layout) -> Option<Self::Allocation>;
+    fn arena_alloc(&self, layout: Layout) -> Option<Self::Allocation>;
     fn size(&self) -> usize;
     fn allocated(&self) -> usize;
-    fn clear(&self);
+    /// extremely dangerous function because calling this function and using a previously allocated value
+    /// will result in that value accessing memory that a new allocation might currently own.
+    /// There is also no way for the Arena to check whether previously allocated memory is being accessed again.
+    unsafe fn clear(&self);
     fn is_clear(&self) -> bool ;
 }
 
 impl<T: Arena> Arena for Arc<T> {
     type Allocation = T::Allocation;
-    fn allocate(&self, layout: Layout) -> Option<Self::Allocation> {
-        (**self).allocate(layout)
+    fn arena_alloc(&self, layout: Layout) -> Option<Self::Allocation> {
+        (**self).arena_alloc(layout)
     }
     fn allocated(&self) -> usize {
         (**self).allocated()
@@ -46,7 +49,7 @@ impl<T: Arena> Arena for Arc<T> {
     fn size(&self) -> usize {
         (**self).size()
     }
-    fn clear(&self) {
+    unsafe fn clear(&self) {
         (**self).clear()
     }
     fn is_clear(&self) -> bool {
@@ -55,8 +58,8 @@ impl<T: Arena> Arena for Arc<T> {
 }
 impl<T: Arena> Arena for Rc<T> {
     type Allocation = T::Allocation;
-    fn allocate(&self, layout: Layout) -> Option<Self::Allocation> {
-        (**self).allocate(layout)
+    fn arena_alloc(&self, layout: Layout) -> Option<Self::Allocation> {
+        (**self).arena_alloc(layout)
     }
     fn allocated(&self) -> usize {
         (**self).allocated()
@@ -64,7 +67,7 @@ impl<T: Arena> Arena for Rc<T> {
     fn size(&self) -> usize {
         (**self).size()
     }
-    fn clear(&self) {
+    unsafe fn clear(&self) {
         (**self).clear()
     }
     fn is_clear(&self) -> bool {
@@ -73,8 +76,8 @@ impl<T: Arena> Arena for Rc<T> {
 }
 impl<T: Arena> Arena for Box<T> {
     type Allocation = T::Allocation;
-    fn allocate(&self, layout: Layout) -> Option<Self::Allocation> {
-        (**self).allocate(layout)
+    fn arena_alloc(&self, layout: Layout) -> Option<Self::Allocation> {
+        (**self).arena_alloc(layout)
     }
     fn allocated(&self) -> usize {
         (**self).allocated()
@@ -82,7 +85,25 @@ impl<T: Arena> Arena for Box<T> {
     fn size(&self) -> usize {
         (**self).size()
     }
-    fn clear(&self) {
+    unsafe fn clear(&self) {
+        (**self).clear()
+    }
+    fn is_clear(&self) -> bool {
+        (**self).is_clear()
+    }
+}
+impl<T: Arena> Arena for &T {
+    type Allocation = T::Allocation;
+    fn arena_alloc(&self, layout: Layout) -> Option<Self::Allocation> {
+        (**self).arena_alloc(layout)
+    }
+    fn allocated(&self) -> usize {
+        (**self).allocated()
+    }
+    fn size(&self) -> usize {
+        (**self).size()
+    }
+    unsafe fn clear(&self) {
         (**self).clear()
     }
     fn is_clear(&self) -> bool {
@@ -90,7 +111,7 @@ impl<T: Arena> Arena for Box<T> {
     }
 }
 /// Arena allocator that uses a pointer and a size to represent allocations.
-/// Used when performance is preffered
+/// Used when performance is preffered.
 #[derive(Clone, Debug)]
 pub struct PtrArena {
     ptr: *mut u8,
@@ -112,14 +133,14 @@ impl PtrArena {
         Self { ptr: slice.as_mut_ptr(), size: slice.len(), offset: Cell::new(0) }
     }
     pub fn from_arena(arena: &dyn Arena<Allocation = *mut u8>, layout: Layout) -> Option<Self> {
-        let ptr = arena.allocate(layout)?;
+        let ptr = arena.arena_alloc(layout)?;
         Some(Self { ptr, size: layout.size(), offset: Cell::new(0) })
     }
 }
 
 impl Arena for PtrArena {
-    type Allocation = *mut u8;
-    fn allocate(&self, layout: Layout) -> Option<Self::Allocation> {
+    type Allocation = std::ptr::NonNull<[u8]>;
+    fn arena_alloc(&self, layout: Layout) -> Option<Self::Allocation> {
         self.offset.set(self.offset.get().next_multiple_of(layout.align())); // align type
         let offset = self.offset.get();
         if let Some(new_offset) = offset.checked_add(layout.size()) { // checks for addition overflow, allocation can not overflow
@@ -127,7 +148,7 @@ impl Arena for PtrArena {
                 return None;
             }
             self.offset.set(new_offset);
-            unsafe { Some(self.ptr.add(offset)) }
+            unsafe { Some(std::ptr::NonNull::new(std::slice::from_raw_parts_mut(self.ptr.add(offset), layout.size()))?) }
         } else { // size too large, not enough space
             None
         }
@@ -138,11 +159,20 @@ impl Arena for PtrArena {
     fn allocated(&self) -> usize {
         self.offset.get()
     }
-    fn clear(&self) {
+    unsafe fn clear(&self) {
         self.offset.set(0);
     }
     fn is_clear(&self) -> bool {
         self.offset.get() == 0
+    }
+}
+unsafe impl Allocator for PtrArena {
+    #[inline]
+    fn allocate(&self, layout: Layout) -> Result<std::ptr::NonNull<[u8]>, std::alloc::AllocError> {
+        <Self as Arena>::arena_alloc(self, layout).ok_or(std::alloc::AllocError)
+    }
+    unsafe fn deallocate(&self, ptr: std::ptr::NonNull<u8>, layout: Layout) {
+        // empty deallocate function, since we clear Arenas, not deallocate.
     }
 }
 #[cfg(test)]
@@ -154,10 +184,22 @@ mod test {
     fn arena_test() {
         let allocation = unsafe { std::alloc::alloc(Layout::new::<[u8;1024*80]>()) };
         let arena = unsafe { PtrArena::from_raw(allocation, 1024*80) };
-        let arena_alloc1 = arena.allocate(Layout::new::<u8>()).unwrap(); // size of u8 = 1
+        let arena_alloc1 = arena.arena_alloc(Layout::new::<u8>()).unwrap(); // size of u8 = 1
         assert!(arena.allocated() == 1, "Test if the arena correctly allocated a u8");
-        let arena_alloc2 = arena.allocate(Layout::new::<u64>()).unwrap(); // size of u64 = 8 align = 8
+        let arena_alloc2 = arena.arena_alloc(Layout::new::<u64>()).unwrap(); // size of u64 = 8 align = 8
         assert!(arena.allocated() == 16, "Test to see whether it was correctly aligned and allocated");
-        assert!((arena_alloc2 as usize).sub(arena_alloc1 as usize) == 8, "testing to see if the location was correctly allocated");
+        assert!((unsafe { arena_alloc2.as_ref().as_ptr() } as usize).sub(unsafe { arena_alloc1.as_ref().as_ptr() } as usize) == 8, "testing to see if the location was correctly allocated");
+    }
+    #[test]
+    fn type_test() {
+        let allocation = unsafe { std::alloc::alloc(Layout::new::<[u8;1024*80]>()) };
+        let arena = unsafe { PtrArena::from_raw(allocation, 1024*80) };
+        let mut arena_vector = Vec::<u8, &PtrArena>::new_in(&arena);
+        for i in 0..10 {
+            arena_vector.push(i);
+        }
+        assert!(arena_vector == vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "Testing vectors allocate correctly");
+        let mut boxed = Box::new_in(42, &arena);
+        assert!(*boxed == 42, "Testing box allocated correctly");
     }
 }
