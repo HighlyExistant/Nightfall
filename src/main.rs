@@ -11,6 +11,7 @@ fn main() {
         unsafe { allocator.deallocate(alloc.cast(), layout) };
         println!("ARENA {:?}", bench.elapsed());
     };
+    
     let alloc = unsafe { std::alloc::alloc(Layout::new::<[u8;1024*80]>()) };
     let arena = unsafe { StandardArena::new(1024*80) };
     

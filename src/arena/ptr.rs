@@ -174,7 +174,7 @@ unsafe impl Allocator for PtrArena {
     fn allocate(&self, layout: Layout) -> Result<std::ptr::NonNull<[u8]>, std::alloc::AllocError> {
         <Self as Arena>::arena_alloc(self, layout).ok_or(std::alloc::AllocError)
     }
-    unsafe fn deallocate(&self, ptr: std::ptr::NonNull<u8>, layout: Layout) {
+    unsafe fn deallocate(&self, _: std::ptr::NonNull<u8>, _: Layout) {
         // empty deallocate function, since we clear Arenas, not deallocate.
     }
 }

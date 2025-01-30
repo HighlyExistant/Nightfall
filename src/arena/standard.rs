@@ -1,9 +1,8 @@
-use std::{alloc::{Allocator, Global, Layout}, marker::PhantomData, ptr::NonNull};
+use std::{alloc::{Allocator, Global, Layout}, ptr::NonNull};
 
 use super::{Arena, PtrArena};
 pub struct NextArenaHeader {
     arena: Option<PtrArena>,
-    next: Option<NonNull<NextArenaHeader>>,
 }
 pub struct StandardArena<A: Allocator> {
     arena: PtrArena,
@@ -27,6 +26,21 @@ impl<A: Allocator> StandardArena<A> {
     }
     fn get_arena_header(arena: &PtrArena) -> &mut NextArenaHeader {
         unsafe { arena.as_ptr().sub(std::mem::size_of::<NextArenaHeader>()).cast::<NextArenaHeader>().as_mut().unwrap() }
+    }
+    fn drop_recurse_inner(&self, current_arena: &PtrArena) {
+        if let Some(arena) = &Self::get_arena_header(current_arena).arena {
+            self.drop_recurse_inner(arena)
+        }
+        let dealloc = unsafe { NonNull::new(current_arena.as_ptr().sub(std::mem::size_of::<NextArenaHeader>())).unwrap() };
+        unsafe { self.deallocate(dealloc, Layout::from_size_align(current_arena.size()+std::mem::size_of::<NextArenaHeader>(), 1).unwrap()) };
+    }
+    fn drop_recurse(&self) {
+        let current_arena = &self.arena;
+        if let Some(arena) = Self::get_arena_header(current_arena).arena.as_ref() {
+            self.drop_recurse_inner(arena)
+        }
+        let dealloc = unsafe { NonNull::new(current_arena.as_ptr().sub(std::mem::size_of::<NextArenaHeader>())).unwrap() };
+        unsafe { self.deallocate(dealloc, Layout::from_size_align(current_arena.size()+std::mem::size_of::<NextArenaHeader>(), 1).unwrap()) };
     }
 }
 impl<A: Allocator> Arena for StandardArena<A> {
@@ -88,12 +102,16 @@ impl<A: Allocator> Arena for StandardArena<A> {
         size
     }
 }
-
+impl<A: Allocator> Drop for StandardArena<A> {
+    fn drop(&mut self) {
+        self.drop_recurse();
+    }
+}
 unsafe impl<A: Allocator> Allocator for StandardArena<A> {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, std::alloc::AllocError> {
         <Self as Arena>::arena_alloc(self, layout).ok_or(std::alloc::AllocError)
     }
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+    unsafe fn deallocate(&self, _: NonNull<u8>, _: Layout) {
         // empty deallocate function, since we clear Arenas, not deallocate.
     }
 }
