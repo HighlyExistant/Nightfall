@@ -1,6 +1,6 @@
 use std::alloc::{Allocator, Global};
 
-use super::{Iter, IterMut, RBTree, Values, ValuesMut};
+use super::{Iter, IterMut, Keys, RBTree, Values, ValuesMut};
 
 pub struct RBTreeMap<K: Ord, T, A: Allocator = Global> {
     base: RBTree<K, T, A>,
@@ -48,6 +48,12 @@ impl<K: Ord, T, A: Allocator> RBTreeMap<K, T, A> {
     }
     pub fn values_mut(&mut self) -> ValuesMut<K, T, A> {
         ValuesMut { iter: self.iter_mut() }
+    }
+    pub fn keys(&self) -> Keys<K, T, A> {
+        Keys { iter: self.iter() }
+    }
+    pub fn keeps(&self) -> Keys<K, T, A> {
+        Keys { iter: self.iter() }
     }
     pub fn clear(&mut self) {
         self.base.clear();

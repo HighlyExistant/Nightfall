@@ -736,6 +736,16 @@ impl<'a, K: Ord, T, A: Allocator> Iterator for Values<'a, K, T, A> {
         self.iter.next().map(|(a, b)|b)
     }
 }
+pub struct Keys<'a, K: Ord, T, A: Allocator> {
+    iter: Iter<'a, K, T, A>,
+}
+
+impl<'a, K: Ord, T, A: Allocator> Iterator for Keys<'a, K, T, A> {
+    type Item = &'a K;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(a, b)|a)
+    }
+}
 
 pub struct ValuesMut<'a, K: Ord, T, A: Allocator> {
     iter: IterMut<'a, K, T, A>,
