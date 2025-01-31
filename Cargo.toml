@@ -8,6 +8,8 @@ edition = "2021"
 [dependencies]
 lazy_static = "1.5.0"
 rand = "0.9.0"
+thread_local = "1.1.8"
 
 [features]
 atom = []
+sync = []
