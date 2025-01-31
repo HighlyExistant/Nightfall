@@ -1,5 +1,3 @@
-use std::num::NonZeroU128;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Atom(u128);
 impl Default for Atom {

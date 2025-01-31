@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::{alloc::{Allocator, Global, Layout}, ptr::NonNull};
 
 use super::{Arena, PtrArena};
