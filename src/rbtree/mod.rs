@@ -1,8 +1,8 @@
 #![allow(unused)]
 use std::{alloc::{Allocator, Global}, cmp::Ordering, fmt::Display, marker::PhantomData};
-// mod set;
+mod set;
 mod map;
-// pub use set::*;
+pub use set::*;
 pub use map::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Color {
@@ -23,6 +23,9 @@ impl<K: Ord, T> RBTreeNode<K, T> {
     }
     pub fn pair_ref(&self) -> (&K, &T) {
         (&self.key, &self.value)
+    }
+    pub fn key(&self) -> &K {
+        &self.key
     }
 }
 #[derive(Debug)]
@@ -174,7 +177,10 @@ impl<K: Ord, T, A: Allocator> RBTree<K, T, A> {
         self.len += 1;
         self.fix_insert(node);
     }
-    
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
     pub fn get(&self, key: &K) -> Option<&T> {
         let mut node = self.find_node(key);
         if node.is_null() {
@@ -189,6 +195,14 @@ impl<K: Ord, T, A: Allocator> RBTree<K, T, A> {
             None
         } else {
             unsafe { Some(std::mem::transmute(node.value_mut())) }
+        }
+    }
+    pub fn get_key_value(&self, key: &K) -> Option<(&K, &T)> {
+        let mut node = self.find_node(key);
+        if node.is_null() {
+            None
+        } else {
+            unsafe { Some((std::mem::transmute(node.key()), std::mem::transmute(node.value()))) }
         }
     }
     pub fn is_clear(&self) -> bool {
@@ -385,11 +399,17 @@ impl<K: Ord, T, A: Allocator> RBTree<K, T, A> {
             }
         })
     }
-    pub fn iter(&self) -> RBTreeIterator<K, T, A> {
-        RBTreeIterator::new(self)
+    pub fn iter(&self) -> Iter<K, T, A> {
+        Iter::new(self)
     }
-    pub fn iter_mut(&mut self) -> RBTreeIteratorMut<K, T, A> {
-        RBTreeIteratorMut::new(self)
+    pub fn iter_mut(&mut self) -> IterMut<K, T, A> {
+        IterMut::new(self)
+    }
+    pub fn values(&self) -> Values<K, T, A> {
+        Values { iter: self.iter() }
+    }
+    pub fn values_mut(&mut self) -> ValuesMut<K, T, A> {
+        ValuesMut { iter: self.iter_mut() }
     }
     pub fn minimum(&self) -> &T {
         unsafe { std::mem::transmute(Self::minimum_node(self.root).value()) }
@@ -622,12 +642,12 @@ impl<K: Ord + Display, T> Display for RBTree<K, T> {
     }
 }
 
-pub struct RBTreeIterator<'a, K: Ord, T, A: Allocator> {
+pub struct Iter<'a, K: Ord, T, A: Allocator> {
     root: &'a RBTree<K, T, A>,
     stack: Vec<NodePtr<K, T>>,
 }
 
-impl<'a, K: Ord, T, A: Allocator> RBTreeIterator<'a, K, T, A> {
+impl<'a, K: Ord, T, A: Allocator> Iter<'a, K, T, A> {
     pub fn new(tree: &'a RBTree<K, T, A>) -> Self {
         let mut stack = Vec::with_capacity(tree.len);
         if !tree.root.is_null() {
@@ -657,20 +677,19 @@ impl<'a, K: Ord, T, A: Allocator> RBTreeIterator<'a, K, T, A> {
     }
 }
 
-impl<'a, K: Ord, T, A: Allocator> Iterator for RBTreeIterator<'a, K, T, A> {
+impl<'a, K: Ord, T, A: Allocator> Iterator for Iter<'a, K, T, A> {
     type Item = (&'a K, &'a T);
     fn next(&mut self) -> Option<Self::Item> {
         unsafe { Some(std::mem::transmute(self.next_inner()?.node().pair_ref())) }
     }
 }
 
-
-pub struct RBTreeIteratorMut<'a, K: Ord, T, A: Allocator> {
+pub struct IterMut<'a, K: Ord, T, A: Allocator> {
     root: &'a mut RBTree<K, T, A>,
     stack: Vec<NodePtr<K, T>>,
 }
 
-impl<'a, K: Ord, T, A: Allocator> RBTreeIteratorMut<'a, K, T, A> {
+impl<'a, K: Ord, T, A: Allocator> IterMut<'a, K, T, A> {
     pub fn new(tree: &'a mut RBTree<K, T, A>) -> Self {
         let mut stack = Vec::with_capacity(tree.len);
         if !tree.root.is_null() {
@@ -700,10 +719,31 @@ impl<'a, K: Ord, T, A: Allocator> RBTreeIteratorMut<'a, K, T, A> {
     }
 }
 
-impl<'a, K: Ord, T, A: Allocator> Iterator for RBTreeIteratorMut<'a, K, T, A> {
+impl<'a, K: Ord, T, A: Allocator> Iterator for IterMut<'a, K, T, A> {
     type Item = (&'a K, &'a mut T);
     fn next(&mut self) -> Option<Self::Item> {
         unsafe { Some(std::mem::transmute(self.next_inner()?.node().pair_ref())) }
     }
 }
 
+pub struct Values<'a, K: Ord, T, A: Allocator> {
+    iter: Iter<'a, K, T, A>,
+}
+
+impl<'a, K: Ord, T, A: Allocator> Iterator for Values<'a, K, T, A> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(a, b)|b)
+    }
+}
+
+pub struct ValuesMut<'a, K: Ord, T, A: Allocator> {
+    iter: IterMut<'a, K, T, A>,
+}
+
+impl<'a, K: Ord, T, A: Allocator> Iterator for ValuesMut<'a, K, T, A> {
+    type Item = &'a mut T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(a, b)|b)
+    }
+}

@@ -70,6 +70,10 @@ fn main() {
             let x = i;
         }
     }, "RBTree iter", 0..100000);
+    let map = HashMap::<usize, usize>::new();
+    let set = HashSet::<usize>::new();
+    let x = map.get(&0);
+    map.values();
     // before optimization
     // Hashmap iter 2.977001ms
     // RBTree iter 3.359479ms
