@@ -46,11 +46,11 @@ impl<A: Allocator> StandardArena<A> {
 }
 impl<A: Allocator> Arena for StandardArena<A> {
     type Allocation = std::ptr::NonNull<[u8]>;
-    fn arena_alloc(&self, layout: Layout) -> Option<Self::Allocation> {
+    fn arena_alloc(&self, layout: Layout) -> anyhow::Result<Self::Allocation> {
         let mut current_arena = &self.arena;
         loop {
-            if let Some(alloc) = current_arena.arena_alloc(layout) {
-                return Some(alloc);   
+            if let Ok(alloc) = current_arena.arena_alloc(layout) {
+                return Ok(alloc);   
             }
             // if we are here, arena allocation must've failed
             let header = Self::get_arena_header(current_arena);
@@ -110,7 +110,7 @@ impl<A: Allocator> Drop for StandardArena<A> {
 }
 unsafe impl<A: Allocator> Allocator for StandardArena<A> {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, std::alloc::AllocError> {
-        <Self as Arena>::arena_alloc(self, layout).ok_or(std::alloc::AllocError)
+        <Self as Arena>::arena_alloc(self, layout).map_err(|_|std::alloc::AllocError)
     }
     unsafe fn deallocate(&self, _: NonNull<u8>, _: Layout) {
         // empty deallocate function, since we clear Arenas, not deallocate.

@@ -40,7 +40,7 @@ impl<A: Allocator + Send + Sync + Clone> AsyncArena<A> {
 
 impl<A: Allocator + Send + Sync + Clone> Arena for  AsyncArena<A> {
     type Allocation = std::ptr::NonNull<[u8]>;
-    fn arena_alloc(&self, layout: std::alloc::Layout) -> Option<Self::Allocation> {
+    fn arena_alloc(&self, layout: std::alloc::Layout) -> anyhow::Result<Self::Allocation> {
         self.get_arena().arena_alloc(layout)
     }
     fn allocated(&self) -> usize {

@@ -1,5 +1,6 @@
 #![feature(allocator_api)]
-mod rbtree;
-mod arena;
+pub mod rbtree;
+pub mod arena;
 #[cfg(feature="atom")]
-mod atom;
+pub mod atom;
+pub mod error;
