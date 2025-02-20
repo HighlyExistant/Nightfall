@@ -1,17 +1,12 @@
 [package]
-name = "nightfall_alloc"
+name = "nightfall"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.95"
-crossbeam = "0.8.4"
-lazy_static = "1.5.0"
-rand = "0.9.0"
-thiserror = "2.0.11"
-thread_local = "1.1.8"
+nightfall_allocators ={ path = "nightfall_allocators" }
 
 [features]
 atom = []

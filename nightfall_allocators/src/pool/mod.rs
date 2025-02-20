@@ -1,9 +1,7 @@
 use std::{rc::Rc, sync::Arc};
 mod ptr;
-mod standard;
-
 pub use ptr::*;
-pub use standard::*;
+
 pub trait PoolAllocator {
     type Allocation;
     fn allocate(&self) -> anyhow::Result<Self::Allocation>;
