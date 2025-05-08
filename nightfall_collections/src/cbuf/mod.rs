@@ -1,4 +1,4 @@
-use std::{alloc::Layout, marker::PhantomData};
+use std::{alloc::Layout, marker::PhantomData, mem::ManuallyDrop, ptr::NonNull};
 
 use anyhow::Ok;
 
@@ -6,7 +6,8 @@ use crate::error::CollectionError;
 /// Fixed size circular buffer 
 #[derive(Debug, Clone)]
 pub struct CircularBuffer<T> {
-    buf: Box<[T]>,
+    buf: NonNull<T>,
+    capacity: usize,
     head: usize,
     tail: usize,
     len: usize,
@@ -14,13 +15,12 @@ pub struct CircularBuffer<T> {
 
 impl<T> CircularBuffer<T> {
     pub fn new(count: usize) -> Self {
-        assert!(count > 1, "A circular buffer should not have a fixed size of 1, consider using just a regular buffer");
+        // assert!(count > 1, "A circular buffer should not have a fixed size of 1, consider using just a regular buffer");
         let buf = unsafe {
             let data =  std::alloc::alloc_zeroed(Layout::array::<T>(count).unwrap()) as *mut T;
-            let slice = std::slice::from_raw_parts_mut(data, count);
-            Box::from_raw(slice)
+            NonNull::new(data).unwrap()
         };
-        Self { buf, head: 0, tail: 0, len: 0 }
+        Self { buf, capacity: count, head: 0, tail: 0, len: 0 }
     }
     #[inline(always)]
     pub fn full(&self) -> bool {
@@ -32,7 +32,7 @@ impl<T> CircularBuffer<T> {
     }
     #[inline(always)]
     pub fn capacity(&self) -> usize {
-        self.buf.len()
+        self.capacity
     }
     #[inline(always)]
     pub fn len(&self) -> usize {
@@ -45,33 +45,31 @@ impl<T> CircularBuffer<T> {
             Err(CollectionError::CapacityFull)?;
         }
         unsafe {
-            let end = self.buf.as_mut_ptr().add(self.head);
+            let end = self.buf.as_ptr().add(self.head);
             std::ptr::write(end, value);
             self.head = (self.head + 1)%capacity;
         }
         self.len += 1;
         Ok(())
     }
-    pub fn get(&mut self) -> Option<&T> {
+    pub fn get(&mut self) -> Option<T> {
         let capacity = self.capacity();
         if self.head == self.tail && self.len != capacity {
             return None;
         }
 
-        let get = &self.buf[self.tail];
+        let get = unsafe { std::ptr::read(self.buf.as_ptr().add(self.tail)) };
         self.tail = (self.tail + 1)%capacity;
         self.len -= 1;
 
         Some(get)
     }
-    pub fn get_mut(&mut self) -> Option<&mut T> {
-        let len = self.capacity();
-        let next = (self.tail + 1)%len;
-        if self.head == next {
-            return None;
+}
+
+impl<T> Drop for CircularBuffer<T> {
+    fn drop(&mut self) {
+        unsafe {
+            std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(self.buf.as_ptr().add(self.tail), self.len));
         }
-        let get = &mut self.buf[next];
-        self.tail = next;
-        Some(get)
     }
 }

@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 nightfall_allocators ={ path = "nightfall_allocators" }
 nightfall_collections ={ path = "nightfall_collections" }
+rand = "0.9.1"
 
 [features]
 atom = []
