@@ -1,3 +1,3 @@
-pub struct AdjacencyMatrixConst {
+pub struct AdjacencyMatrix {
     
 }

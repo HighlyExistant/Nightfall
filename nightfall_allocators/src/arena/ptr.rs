@@ -52,7 +52,9 @@ impl<T: Arena> Arena for Arc<T> {
         (**self).size()
     }
     unsafe fn clear(&self) {
-        (**self).clear()
+        unsafe {
+            (**self).clear()
+        }
     }
     fn is_clear(&self) -> bool {
         (**self).is_clear()
@@ -70,7 +72,9 @@ impl<T: Arena> Arena for Rc<T> {
         (**self).size()
     }
     unsafe fn clear(&self) {
-        (**self).clear()
+        unsafe {
+            (**self).clear()
+        }
     }
     fn is_clear(&self) -> bool {
         (**self).is_clear()
@@ -88,7 +92,9 @@ impl<T: Arena> Arena for Box<T> {
         (**self).size()
     }
     unsafe fn clear(&self) {
-        (**self).clear()
+        unsafe {
+            (**self).clear()
+        }
     }
     fn is_clear(&self) -> bool {
         (**self).is_clear()
@@ -106,7 +112,9 @@ impl<T: Arena> Arena for &T {
         (**self).size()
     }
     unsafe fn clear(&self) {
-        (**self).clear()
+        unsafe {
+            (**self).clear()
+        }
     }
     fn is_clear(&self) -> bool {
         (**self).is_clear()

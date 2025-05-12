@@ -1,4 +1,4 @@
-use std::{alloc::Layout, marker::PhantomData, mem::ManuallyDrop, ptr::NonNull};
+use std::{alloc::Layout, ptr::NonNull};
 
 use anyhow::Ok;
 

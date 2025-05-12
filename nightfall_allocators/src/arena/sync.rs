@@ -47,7 +47,9 @@ impl<A: Allocator + Send + Sync + Clone> Arena for  AsyncArena<A> {
         self.get_arena().allocated()
     }
     unsafe fn clear(&self) {
-        self.get_arena().clear()
+        unsafe {
+            self.get_arena().clear()
+        }
     }
     fn is_clear(&self) -> bool {
         self.get_arena().is_clear()

@@ -76,7 +76,9 @@ impl<A: Allocator> Arena for StandardArena<A> {
     unsafe fn clear(&self) {
         let mut current_arena = Some(&self.arena);
         while let Some(arena) = current_arena {
-            arena.clear();
+            unsafe {
+                arena.clear();
+            }
             current_arena = Self::get_arena_header(arena).arena.as_ref();
         }
     }
